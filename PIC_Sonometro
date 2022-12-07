@@ -1,0 +1,100 @@
+#include <C:\Program Files (x86)\PICC\Devices\18f4550.h>
+#device ADC=10
+#include <C:\Program Files (x86)\PICC\Drivers\math.h>
+#include <C:\Program Files (x86)\PICC\Drivers\float.h>
+#fuses NOWDT,NOPROTECT,NOLVP,NODEBUG,HSPLL,PLL5,CPUDIV1
+#use delay(clock=48000000)
+#use rs232 (baud=9600, xmit=PIN_C6)
+
+
+const float lsb=(5.0/1024);
+int16 Tmr0_inic;
+int16 num_dat;
+int32 cod_ad;
+int32 sum_cod;
+int32 sum_cuad;
+int32 cod_avg;
+double lg;
+double db;
+signed int32 cod_ac;
+float v_rms;
+float arg;
+float spl;
+float valor = 0.05;
+float cero;
+#int_rtcc
+
+void ovFlw_Tmr0(){
+    set_timer0(Tmr0_inic);
+    output_high(PIN_D2);
+    cod_ad=read_adc();
+    sum_cod=sum_cod + cod_ad;
+    cod_ac= cod_ad - cod_avg;
+    sum_cuad= sum_cuad + (cod_ac*cod_ac);
+    num_dat= num_dat+1;
+    output_low(PIN_D2);
+}
+
+void main(){
+    setup_adc(ADC_CLOCK_INTERNAL);
+    setup_adc_ports(AN0);
+    set_adc_channel(0);
+    
+    num_dat=0; cod_avg=512;
+    sum_cod=0; sum_cuad=0;
+    
+    Tmr0_inic=63650;
+    setup_timer_0(RTCC_DIV_1);
+    set_timer0(Tmr0_inic);
+    enable_interrupts(GLOBAL);
+    
+    putc(254);putc(1);
+    putc(124);putc(128);
+    
+    enable_interrupts(INT_RTCC);
+    
+    while(TRUE){
+        if (num_dat==8000){
+            disable_interrupts(INT_RTCC);
+            
+            putc(254);putc(1);delay_ms(20);
+            
+            cod_avg= sum_cod/8000;
+            //putc(254);putc(127+1);
+            //printf("media: %04Lu", cod_avg);
+            v_rms=lsb*sqrt(sum_cuad/8000)*0.95;
+            if (v_rms < valor){
+                cero=v_rms;
+                v_rms=0.00158866;
+                arg=(v_rms/0.000020);
+                db=log10(v_rms);
+                db=20*db;
+                lg= log10(arg);
+                spl=20*lg;
+                putc(254);putc(127+1);
+                printf("dB:%1.3g", db);
+                putc(254);putc(191+1);
+                printf("SPL:%1.3g", spl);
+            //printf("log%d",lg);
+            
+            }else{
+                v_rms=v_rms-cero;
+                db=log10(v_rms);
+                db=20*db;
+                arg=(v_rms/0.000020);
+                lg= log10(arg);
+                spl=20*lg;
+                putc(254);putc(127+1);
+                printf("dB:%1.3g", db);
+            
+                putc(254);putc(191+1);
+                printf("SPL:%1.3g", spl);
+            //printf("log%d",lg);
+            }
+            num_dat=0; sum_cod=0; sum_cuad=0;
+            
+            enable_interrupts(INT_RTCC);  
+        }
+    
+    }
+}
